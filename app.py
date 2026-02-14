@@ -1,4 +1,3 @@
-# paste the Flask code I gave you here
 from flask import Flask, request, jsonify
 from ultralytics import YOLO
 import cv2
@@ -30,34 +29,45 @@ def estimate_severity(total):
 
 @app.route("/predict", methods=["POST"])
 def predict():
+    if 'image' not in request.files:
+        return jsonify({"error": "No image uploaded"}), 400
+
     file = request.files["image"]
     image = cv2.imdecode(
         np.frombuffer(file.read(), np.uint8),
         cv2.IMREAD_COLOR
     )
 
+    # Run the AI
     results = model(image, conf=0.25)[0]
 
     counts = {}
     total = 0
-    avg_conf = 0
+    avg_conf = 0.0  # Default to 0.0
 
     if results.boxes is not None:
         cls = results.boxes.cls.cpu().numpy().astype(int)
         conf = results.boxes.conf.cpu().numpy()
 
         for c in cls:
-            counts[CLASS_NAMES[c]] = counts.get(CLASS_NAMES[c], 0) + 1
+            label = CLASS_NAMES.get(c, 'unknown')
+            counts[label] = counts.get(label, 0) + 1
 
         total = len(cls)
-        avg_conf = float(conf.mean())
+        
+        # --- THE FIX IS HERE ---
+        if total > 0:
+            avg_conf = float(conf.mean())
+        else:
+            avg_conf = 0.0
+        # -----------------------
 
     severity = estimate_severity(total)
 
     return jsonify({
         "detections": counts,
         "total": total,
-        "average_confidence": round(avg_conf, 3),
+        "average_confidence": round(avg_conf, 3), 
         "severity": severity
     })
 
